@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { buildStamp, certifyFile, detectType, formatDate } from './stamp.js';
+import { CERTIFIERS, buildStamp, certifierById, certifyFile, detectType, formatDate } from './stamp.js';
+
+const CERTIFIER_KEY = 'certify.certifier';
+const loadCertifier = () => {
+  try { return certifierById(localStorage.getItem(CERTIFIER_KEY)).id; } catch { return CERTIFIERS[0].id; }
+};
 
 const todayISO = () => {
   const d = new Date();
@@ -50,6 +55,7 @@ export default function App() {
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [certifier, setCertifier] = useState(loadCertifier);
   const [date, setDate] = useState(todayISO());
   const [position, setPosition] = useState('bottom-right');
   const [sizePct, setSizePct] = useState(32);
@@ -71,16 +77,20 @@ export default function App() {
   // Stamp with the chosen date, shown when no output is selected.
   useEffect(() => {
     let alive = true;
-    buildStamp(date ? formatDate(date) : '').then((s) => {
+    buildStamp(certifier, date ? formatDate(date) : '').then((s) => {
       if (alive) setStampUrl(s.canvas.toDataURL('image/png'));
-    });
+    }).catch((err) => { if (alive) { setStampUrl(null); flash(err.message); } });
     return () => { alive = false; };
-  }, [date]);
+  }, [certifier, date]);
+
+  useEffect(() => {
+    try { localStorage.setItem(CERTIFIER_KEY, certifier); } catch { /* storage unavailable */ }
+  }, [certifier]);
 
   // Settings changed -> earlier outputs are stale.
   useEffect(() => {
     setItems((list) => list.map((it) => (it.status === 'done' ? { ...it, status: 'queued', result: null } : it)));
-  }, [date, position, sizePct, pages, imageOutput]);
+  }, [certifier, date, position, sizePct, pages, imageOutput]);
 
   const selected = items.find((i) => i.id === selectedId && i.status === 'done') || null;
 
@@ -118,7 +128,7 @@ export default function App() {
     let ok = 0;
     let firstDone = null;
     try {
-      const stamp = await buildStamp(formatDate(date));
+      const stamp = await buildStamp(certifier, formatDate(date));
       const opts = { position, sizePct, pages, imageOutput };
       for (const it of items) {
         if (it.status !== 'queued') continue;
@@ -134,6 +144,9 @@ export default function App() {
             ? { ...x, status: 'error', error: err.message || 'Could not process this file' } : x)));
         }
       }
+    } catch (err) {
+      console.error(err);
+      flash(err.message || 'Could not load the stamp');
     } finally {
       setBusy(false);
     }
@@ -259,6 +272,10 @@ export default function App() {
             <section className="panel stack" aria-label="Stamp settings">
               <p className="label">Stamp settings</p>
               <div className="fields">
+                <div className="f full">Certified by
+                  <Pills label="Certified by" value={certifier} onChange={setCertifier}
+                    options={CERTIFIERS.map((c) => [c.id, c.label])} />
+                </div>
                 <label className="f">Certification date
                   <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </label>
@@ -289,7 +306,7 @@ export default function App() {
           <div className="preview-col">
             <section className="panel" aria-label="Preview">
               <div className="paperbar">
-                <span className="title">{selected ? selected.result.name : 'Stamp preview'}</span>
+                <span className="title">{selected ? selected.result.name : `Stamp preview · ${certifierById(certifier).name}`}</span>
                 {selected && (
                   <button type="button" className="small primary"
                     onClick={() => download(selected.result.blob, selected.result.name)}>Download</button>

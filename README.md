@@ -17,9 +17,10 @@ npm run dev
 The site is marked `noindex`. Recommend turning on **Vercel Deployment Protection** (Project → Settings → Deployment Protection) so only you can open it — the stamp image includes your signature.
 
 ## Changing the stamp
-Replace `public/stamp.png` (transparent background PNG). If the layout changes, adjust the `DATE_X`, `DATE_BASELINE`, `DATE_MAX_W` constants at the top of `src/stamp.js` (fractions of the stamp image's width/height).
+Stamps live in `public/stamps/<id>.png` (black ink, transparent background), one per certifier. The list of certifiers and where each one's date goes (`x`, `baseline`, `maxW`, `font`, `angle`) is the `CERTIFIERS` array at the top of `src/stamp.js`. To add someone: drop in their PNG and add an entry.
 
 ## Options
+- Certified by: Jose, Gaselle or Suzzy (remembered per browser)
 - Date (defaults to today, printed DD/MM/YYYY)
 - Position: corners, bottom centre, centre
 - Size: 15–60% of page width

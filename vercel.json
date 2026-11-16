@@ -23,7 +23,7 @@
       ]
     },
     {
-      "source": "/stamp.png",
+      "source": "/stamps/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache" }
       ]

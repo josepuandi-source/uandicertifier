@@ -1,12 +1,25 @@
 import { PDFDocument, degrees } from 'pdf-lib';
 
-// Where the "Date:" value sits on public/stamp.png, as fractions of the stamp image.
-// Measured from the source artwork: text starts just right of the "Date:" label
-// and must stay inside the inner box border.
-const DATE_X = 0.676;
-const DATE_BASELINE = 0.846;
-const DATE_MAX_W = 0.18;
-const DATE_FONT = 0.05; // font size as a fraction of stamp width (shrinks to fit)
+// One entry per person who can certify. Artwork lives in public/stamps/<id>.png
+// (black ink on a transparent background).
+// date.x / date.baseline / date.maxW: where the date goes, as fractions of the
+// image width/height — just right of the "Date:" label, inside the box border.
+// date.font: font size as a fraction of image width (shrinks to fit maxW).
+// date.angle: degrees, negative = text rises to the right (for tilted scans).
+const CLASSIC_DATE = { x: 0.676, baseline: 0.846, maxW: 0.18, font: 0.05, angle: 0 };
+
+export const CERTIFIERS = [
+  { id: 'jose', label: 'Jose', name: 'Jose Mari Palileo', date: CLASSIC_DATE },
+  { id: 'gaselle', label: 'Gaselle', name: 'Gaselle Grace Luna',
+    date: { x: 0.686, baseline: 0.313, maxW: 0.17, font: 0.045, angle: -4.7 } },
+  { id: 'suzzy', label: 'Suzzy', name: 'Suzzy Angeli Dadole', date: CLASSIC_DATE },
+];
+
+export const certifierById = (id) => CERTIFIERS.find((c) => c.id === id) || CERTIFIERS[0];
+
+// Stamps narrower than this are upscaled before the date is drawn, so the
+// date text stays crisp on low-resolution scans.
+const MIN_RENDER_W = 1200;
 
 export const ACCEPTED = {
   'application/pdf': 'pdf',
@@ -28,40 +41,52 @@ export function formatDate(iso) {
   return `${d}/${m}/${y}`;
 }
 
-let stampImgPromise;
-function loadStampImage() {
-  if (!stampImgPromise) {
-    stampImgPromise = new Promise((resolve, reject) => {
+const stampImgs = new Map();
+function loadStampImage(id) {
+  if (!stampImgs.has(id)) {
+    const p = new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Could not load stamp.png'));
-      img.src = '/stamp.png';
+      img.onerror = () => {
+        stampImgs.delete(id);
+        reject(new Error(`Could not load the stamp for ${certifierById(id).label}`));
+      };
+      img.src = `/stamps/${id}.png`;
     });
+    stampImgs.set(id, p);
   }
-  return stampImgPromise;
+  return stampImgs.get(id);
 }
 
-/** Stamp artwork with the date written in. Returns { canvas, pngBytes, aspect }. */
-export async function buildStamp(dateText) {
-  const img = await loadStampImage();
+/** Certifier's stamp with the date written in. Returns { canvas, pngBytes, aspect }. */
+export async function buildStamp(certifierId, dateText) {
+  const certifier = certifierById(certifierId);
+  const img = await loadStampImage(certifier.id);
+  const scale = Math.max(1, MIN_RENDER_W / img.naturalWidth);
   const c = document.createElement('canvas');
-  c.width = img.naturalWidth;
-  c.height = img.naturalHeight;
+  c.width = Math.round(img.naturalWidth * scale);
+  c.height = Math.round(img.naturalHeight * scale);
   const ctx = c.getContext('2d');
-  ctx.drawImage(img, 0, 0);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, c.width, c.height);
 
   if (dateText) {
-    let size = Math.round(c.width * DATE_FONT);
-    const maxW = c.width * DATE_MAX_W;
+    const d = certifier.date;
+    let size = Math.round(c.width * d.font);
+    const maxW = c.width * d.maxW;
     const font = (s) => `bold ${s}px "Times New Roman", Times, Georgia, serif`;
     ctx.font = font(size);
     while (ctx.measureText(dateText).width > maxW && size > 8) {
       size -= 1;
       ctx.font = font(size);
     }
+    ctx.save();
+    ctx.translate(c.width * d.x, c.height * d.baseline);
+    ctx.rotate((d.angle * Math.PI) / 180);
     ctx.fillStyle = 'rgba(20,20,20,0.95)';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(dateText, c.width * DATE_X, c.height * DATE_BASELINE);
+    ctx.fillText(dateText, 0, 0);
+    ctx.restore();
   }
 
   const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
