@@ -8,12 +8,16 @@ import { PDFDocument, degrees } from 'pdf-lib';
 // date.angle: degrees, negative = text rises to the right (for tilted scans).
 const CLASSIC_DATE = { x: 0.676, baseline: 0.846, maxW: 0.18, font: 0.05, angle: 0 };
 
-export const CERTIFIERS = [
-  { id: 'jose', label: 'Jose', name: 'Jose Mari Palileo', date: CLASSIC_DATE },
-  { id: 'gaselle', label: 'Gaselle', name: 'Gaselle Grace Luna',
+// enabled: false hides a certifier from the app. With only one enabled, the
+// "Certified by" selector is hidden entirely.
+const ALL_CERTIFIERS = [
+  { id: 'jose', label: 'Jose', name: 'Jose Mari Palileo', date: CLASSIC_DATE, enabled: true },
+  { id: 'gaselle', label: 'Gaselle', name: 'Gaselle Grace Luna', enabled: false,
     date: { x: 0.686, baseline: 0.313, maxW: 0.17, font: 0.045, angle: -4.7 } },
-  { id: 'suzzy', label: 'Suzzy', name: 'Suzzy Angeli Dadole', date: CLASSIC_DATE },
+  { id: 'suzzy', label: 'Suzzy', name: 'Suzzy Angeli Dadole', date: CLASSIC_DATE, enabled: false },
 ];
+
+export const CERTIFIERS = ALL_CERTIFIERS.filter((c) => c.enabled);
 
 export const certifierById = (id) => CERTIFIERS.find((c) => c.id === id) || CERTIFIERS[0];
 

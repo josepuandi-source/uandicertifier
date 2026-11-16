@@ -272,10 +272,12 @@ export default function App() {
             <section className="panel stack" aria-label="Stamp settings">
               <p className="label">Stamp settings</p>
               <div className="fields">
-                <div className="f full">Certified by
-                  <Pills label="Certified by" value={certifier} onChange={setCertifier}
-                    options={CERTIFIERS.map((c) => [c.id, c.label])} />
-                </div>
+                {CERTIFIERS.length > 1 && (
+                  <div className="f full">Certified by
+                    <Pills label="Certified by" value={certifier} onChange={setCertifier}
+                      options={CERTIFIERS.map((c) => [c.id, c.label])} />
+                  </div>
+                )}
                 <label className="f">Certification date
                   <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </label>
@@ -306,7 +308,7 @@ export default function App() {
           <div className="preview-col">
             <section className="panel" aria-label="Preview">
               <div className="paperbar">
-                <span className="title">{selected ? selected.result.name : `Stamp preview · ${certifierById(certifier).name}`}</span>
+                <span className="title">{selected ? selected.result.name : (CERTIFIERS.length > 1 ? `Stamp preview · ${certifierById(certifier).name}` : 'Stamp preview')}</span>
                 {selected && (
                   <button type="button" className="small primary"
                     onClick={() => download(selected.result.blob, selected.result.name)}>Download</button>

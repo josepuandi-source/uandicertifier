@@ -20,7 +20,7 @@ The site is marked `noindex`. Recommend turning on **Vercel Deployment Protectio
 Stamps live in `public/stamps/<id>.png` (black ink, transparent background), one per certifier. The list of certifiers and where each one's date goes (`x`, `baseline`, `maxW`, `font`, `angle`) is the `CERTIFIERS` array at the top of `src/stamp.js`. To add someone: drop in their PNG and add an entry.
 
 ## Options
-- Certified by: Jose, Gaselle or Suzzy (remembered per browser)
+- Certified by: currently Jose only. Gaselle and Suzzy are set up but hidden; set `enabled: true` on them in `src/stamp.js` to bring the selector back.
 - Date (defaults to today, printed DD/MM/YYYY)
 - Position: corners, bottom centre, centre
 - Size: 15–60% of page width
