@@ -1,25 +1,6 @@
 import { PDFDocument, degrees } from 'pdf-lib';
 
-// One entry per person who can certify. Artwork lives in public/stamps/<id>.png
-// (black ink on a transparent background).
-// date.x / date.baseline / date.maxW: where the date goes, as fractions of the
-// image width/height — just right of the "Date:" label, inside the box border.
-// date.font: font size as a fraction of image width (shrinks to fit maxW).
-// date.angle: degrees, negative = text rises to the right (for tilted scans).
-const CLASSIC_DATE = { x: 0.676, baseline: 0.846, maxW: 0.18, font: 0.05, angle: 0 };
-
-// enabled: false hides a certifier from the app. With only one enabled, the
-// "Certified by" selector is hidden entirely.
-const ALL_CERTIFIERS = [
-  { id: 'jose', label: 'Jose', name: 'Jose Mari Palileo', date: CLASSIC_DATE, enabled: true },
-  { id: 'gaselle', label: 'Gaselle', name: 'Gaselle Grace Luna', enabled: false,
-    date: { x: 0.686, baseline: 0.313, maxW: 0.17, font: 0.045, angle: -4.7 } },
-  { id: 'suzzy', label: 'Suzzy', name: 'Suzzy Angeli Dadole', date: CLASSIC_DATE, enabled: false },
-];
-
-export const CERTIFIERS = ALL_CERTIFIERS.filter((c) => c.enabled);
-
-export const certifierById = (id) => CERTIFIERS.find((c) => c.id === id) || CERTIFIERS[0];
+import { certifierById } from './certifiers.js';
 
 // Stamps narrower than this are upscaled before the date is drawn, so the
 // date text stays crisp on low-resolution scans.
@@ -45,27 +26,33 @@ export function formatDate(iso) {
   return `${d}/${m}/${y}`;
 }
 
-const stampImgs = new Map();
-function loadStampImage(id) {
-  if (!stampImgs.has(id)) {
-    const p = new Promise((resolve, reject) => {
+// The signed-in person's stamp, fetched from the API (only their own is served).
+let stampImgPromise = null;
+export const forgetStamp = () => { stampImgPromise = null; };
+
+function loadStampImage() {
+  if (!stampImgPromise) {
+    stampImgPromise = (async () => {
+      const res = await fetch('/api/stamp', { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) {
+        const msg = (await res.json().catch(() => null))?.error;
+        throw new Error(msg || 'Could not load your stamp');
+      }
+      const url = URL.createObjectURL(await res.blob());
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => {
-        stampImgs.delete(id);
-        reject(new Error(`Could not load the stamp for ${certifierById(id).label}`));
-      };
-      img.src = `/stamps/${id}.png`;
-    });
-    stampImgs.set(id, p);
+      img.src = url;
+      await img.decode();
+      return img;
+    })().catch((err) => { stampImgPromise = null; throw err; });
   }
-  return stampImgs.get(id);
+  return stampImgPromise;
 }
 
 /** Certifier's stamp with the date written in. Returns { canvas, pngBytes, aspect }. */
 export async function buildStamp(certifierId, dateText) {
   const certifier = certifierById(certifierId);
-  const img = await loadStampImage(certifier.id);
+  if (!certifier) throw new Error('Unknown certifier');
+  const img = await loadStampImage();
   const scale = Math.max(1, MIN_RENDER_W / img.naturalWidth);
   const c = document.createElement('canvas');
   c.width = Math.round(img.naturalWidth * scale);

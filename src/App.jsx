@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { CERTIFIERS, buildStamp, certifierById, certifyFile, detectType, formatDate } from './stamp.js';
-
-const CERTIFIER_KEY = 'certify.certifier';
-const loadCertifier = () => {
-  try { return certifierById(localStorage.getItem(CERTIFIER_KEY)).id; } catch { return CERTIFIERS[0].id; }
-};
+import { buildStamp, certifyFile, detectType, forgetStamp, formatDate } from './stamp.js';
+import Login from './Login.jsx';
 
 const todayISO = () => {
   const d = new Date();
@@ -52,10 +48,31 @@ function Pills({ value, onChange, options, label }) {
 }
 
 export default function App() {
+  const [user, setUser] = useState(undefined); // undefined = checking, null = signed out
+
+  useEffect(() => {
+    fetch('/api/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { user: null }))
+      .then((d) => setUser(d.user || null))
+      .catch(() => setUser(null));
+  }, []);
+
+  const signOut = async () => {
+    await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+    forgetStamp();
+    setUser(null);
+  };
+
+  if (user === undefined) return <div className="boot" aria-busy="true" />;
+  if (!user) return <Login onSignedIn={(u) => { forgetStamp(); setUser(u); }} />;
+  return <Certify key={user.id} user={user} onSignOut={signOut} />;
+}
+
+function Certify({ user, onSignOut }) {
+  const certifier = user.id;
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [dragging, setDragging] = useState(false);
-  const [certifier, setCertifier] = useState(loadCertifier);
   const [date, setDate] = useState(todayISO());
   const [position, setPosition] = useState('bottom-right');
   const [sizePct, setSizePct] = useState(32);
@@ -63,6 +80,7 @@ export default function App() {
   const [imageOutput, setImageOutput] = useState('pdf');
   const [busy, setBusy] = useState(false);
   const [stampUrl, setStampUrl] = useState(null);
+  const [stampError, setStampError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [toast, setToast] = useState(null);
   const inputRef = useRef(null);
@@ -79,13 +97,11 @@ export default function App() {
     let alive = true;
     buildStamp(certifier, date ? formatDate(date) : '').then((s) => {
       if (alive) setStampUrl(s.canvas.toDataURL('image/png'));
-    }).catch((err) => { if (alive) { setStampUrl(null); flash(err.message); } });
+      if (alive) setStampError(null);
+    }).catch((err) => { if (alive) { setStampUrl(null); setStampError(err.message); } });
     return () => { alive = false; };
   }, [certifier, date]);
 
-  useEffect(() => {
-    try { localStorage.setItem(CERTIFIER_KEY, certifier); } catch { /* storage unavailable */ }
-  }, [certifier]);
 
   // Settings changed -> earlier outputs are stale.
   useEffect(() => {
@@ -190,8 +206,12 @@ export default function App() {
               <p className="sub">Drop documents in. They come back stamped as certified true copies with the date filled in.</p>
             </div>
           </div>
+          <div className="who">
+            <span>Certifying as <strong>{user.name}</strong></span>
+            <button type="button" className="link" onClick={onSignOut} disabled={busy}>Sign out</button>
+          </div>
           <div className="actions">
-            <button className="primary" type="button" disabled={busy || queued === 0 || !date} onClick={certifyAll}>
+            <button className="primary" type="button" disabled={busy || queued === 0 || !date || !!stampError} onClick={certifyAll}>
               {busy ? 'Stamping…' : queued ? `Certify ${queued} file${queued === 1 ? '' : 's'}` : 'Certify'}
             </button>
             <button type="button" disabled={busy || doneCount === 0} onClick={downloadAll}>
@@ -272,12 +292,6 @@ export default function App() {
             <section className="panel stack" aria-label="Stamp settings">
               <p className="label">Stamp settings</p>
               <div className="fields">
-                {CERTIFIERS.length > 1 && (
-                  <div className="f full">Certified by
-                    <Pills label="Certified by" value={certifier} onChange={setCertifier}
-                      options={CERTIFIERS.map((c) => [c.id, c.label])} />
-                  </div>
-                )}
                 <label className="f">Certification date
                   <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </label>
@@ -308,7 +322,7 @@ export default function App() {
           <div className="preview-col">
             <section className="panel" aria-label="Preview">
               <div className="paperbar">
-                <span className="title">{selected ? selected.result.name : (CERTIFIERS.length > 1 ? `Stamp preview · ${certifierById(certifier).name}` : 'Stamp preview')}</span>
+                <span className="title">{selected ? selected.result.name : 'Stamp preview'}</span>
                 {selected && (
                   <button type="button" className="small primary"
                     onClick={() => download(selected.result.blob, selected.result.name)}>Download</button>
@@ -322,7 +336,8 @@ export default function App() {
                 </div>
               ) : (
                 <div className="paper stamp">
-                  {stampUrl && <img src={stampUrl} alt="Stamp with date" />}
+                  {stampUrl && <img src={stampUrl} alt={`${user.name}'s stamp with date`} />}
+                  {stampError && <p className="stamp-error" role="alert">{stampError}</p>}
                   <p>{doneCount ? 'Select a certified file on the left to preview it.' : 'Certified files will preview here.'}</p>
                 </div>
               )}
